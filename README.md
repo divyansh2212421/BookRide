@@ -1,53 +1,31 @@
 
-# RideCompare - Principal Architecture & Design
+# RideWise - Production Mobility Engine
 
-RideCompare is a high-performance ride aggregation platform designed for the Indian mobility market. It allows users to compare and **book** rides directly from Uber, Ola, and Rapido without app redirection.
+RideWise is a production-ready ride comparison engine for the Indian market, designed to help users find the best rates across Uber, Ola, and Rapido.
 
-## 1. System Architecture
+## 🚀 Deployment Guide (FREE)
 
-The application follows a **Modular Micro-Frontend** pattern on the client and a **Service-Oriented Architecture (SOA)** on the backend.
+### Frontend (Vercel)
+1. Fork this repository.
+2. Connect your GitHub to [Vercel](https://vercel.com).
+3. Add the following **Environment Variables**:
+   - `API_KEY`: Your Google Gemini API Key.
+4. Deploy! Your app will be live at `https://your-project.vercel.app`.
 
-- **Frontend (Mobile-First React):** Built with React 19, Tailwind CSS, and Gemini-AI for intelligence. Uses a glassmorphic, iOS-inspired design system.
-- **Backend (Simulated FastAPI):** Orchestrates multi-provider logic, payment intents, and ride state.
-- **AI Layer (Gemini-3-Flash):** Provides market insights, surge prediction, and a conversational booking assistant.
+### Backend (Render / Railway)
+1. Create a new Web Service.
+2. Select your repository.
+3. Configure start command: `npm start` (if using Node) or `uvicorn main:app` (if using FastAPI).
+4. Environment Variables:
+   - `DATABASE_URL`: Your PostgreSQL connection string.
+   - `JWT_SECRET`: A secure string for session signing.
 
-## 2. Booking Flow Sequence (Logic)
+## 🔁 Booking & Redirection Logic
 
-1. **Discovery:** User selects pickup/drop. Aggregator fetches real-time estimates.
-2. **Intent:** User selects a specific ride. App creates a `BookingIntent` in the backend.
-3. **Payment Authorization:** Integrated with a Payment Gateway (Stripe/Razorpay). Funds are authorized but not yet captured.
-4. **Provider Handshake:** Backend sends a booking request to the provider (Uber/Ola/Rapido API).
-5. **Confirmation:** Provider returns `driver_id`, `vehicle_details`, and `otp`.
-6. **Capture:** Once confirmed, payment is captured.
-7. **Lifecycle:** App polls or listens (WebSockets) for status updates: `ARRIVING` -> `ON_TRIP` -> `COMPLETED`.
+RideWise uses a **Secure Redirection Layer** to move users to official provider websites:
+- **Uber:** Uses the official `m.uber.com` URL scheme with deep-linked coordinates.
+- **Ola:** Uses `book.olacabs.com` with UTM tracking and pre-filled latitude/longitude.
+- **Rapido:** Directs to the official brand page (Web-booking not yet publicly available).
 
-## 3. Database Schema Updates
-
-### Table: `bookings`
-- `id`: UUID (Primary Key)
-- `user_id`: UUID (FK to users)
-- `provider`: Enum (Uber, Ola, Rapido)
-- `status`: Enum (Confirmed, Arriving, OnTrip, Completed, Cancelled)
-- `price`: Decimal
-- `otp`: String
-- `pickup_lat/lng`: Point
-- `drop_lat/lng`: Point
-- `driver_info`: JSONB (name, vehicle, rating)
-
-### Table: `transactions`
-- `id`: UUID (Primary Key)
-- `booking_id`: UUID (FK to bookings)
-- `status`: Enum (Pending, Authorized, Captured, Failed)
-- `gateway_ref`: String (External ID)
-
-## 4. Legal & Compliance Notes
-
-- **API Usage:** Direct booking relies on official Provider Partner APIs. If APIs are revoked, the app falls back to **Mode 3: Redirection**.
-- **Data Privacy:** GDPR/DPDP compliant. Geolocation is used only for active ride matching and is not stored long-term without consent.
-- **PCI DSS:** All payment info is tokenized at the gateway. The backend never stores raw CVV/Card numbers.
-
-## 5. Future Scalability
-
-- **Multi-Tenancy:** Expanding to support regional providers (e.g., Namma Yatri).
-- **Batch Processing:** AI surge analysis using historical Redis data.
-- **Caching:** Using Redis to cache estimates for identical routes (TTL: 30s).
+## ⚖️ Disclaimer & Compliance
+RideWise acts purely as an aggregator. We do not process payments or manage fleet operations. All transactions occur on the respective third-party provider platforms.
