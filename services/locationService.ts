@@ -2,15 +2,36 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { LocationSuggestion, Location } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getApiKey = () => {
+  try {
+    return process.env.API_KEY || "";
+  } catch (e) {
+    return "";
+  }
+};
 
-/**
- * Fetches location suggestions based on user input.
- * In production, this would call Google Places Autocomplete API.
- * Here we use Gemini to simulate high-quality, localized suggestions for India.
- */
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
+
 export const getLocationSuggestions = async (query: string): Promise<LocationSuggestion[]> => {
   if (!query || query.length < 3) return [];
+
+  // If no API key, provide helpful static defaults for common Indian cities
+  if (!getApiKey()) {
+    return [
+      { 
+        primaryText: `${query} MG Road`, 
+        secondaryText: "Bangalore, Karnataka", 
+        fullAddress: `${query}, MG Road, Bangalore 560001`,
+        lat: 12.9716, lng: 77.5946 
+      },
+      { 
+        primaryText: `${query} Terminal 1`, 
+        secondaryText: "Mumbai Airport, Maharashtra", 
+        fullAddress: `${query}, Chhatrapati Shivaji Maharaj International Airport, Mumbai`,
+        lat: 19.0896, lng: 72.8656 
+      }
+    ];
+  }
 
   const prompt = `You are a production-grade location autocomplete service for a mobility app in India.
   User query: "${query}"
@@ -22,7 +43,7 @@ export const getLocationSuggestions = async (query: string): Promise<LocationSug
   3. fullAddress: The complete postal address.
   4. lat/lng: Realistic coordinates in a major Indian city (Bangalore, Mumbai, Delhi, etc.) matching the query.
   
-  Return the result strictly as a JSON array of objects following this schema.`;
+  Return the result strictly as a JSON array of objects.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -49,31 +70,23 @@ export const getLocationSuggestions = async (query: string): Promise<LocationSug
 
     return JSON.parse(response.text.trim());
   } catch (error) {
-    console.error("Autocomplete failed, falling back to heuristics:", error);
-    // Reliable fallback for common patterns
+    console.error("Autocomplete failed:", error);
     return [
       { 
         primaryText: `${query} Central`, 
         secondaryText: "Bangalore, KA", 
         fullAddress: `${query} Central Mall, MG Road, Bangalore 560001`,
         lat: 12.9716, lng: 77.5946 
-      },
-      { 
-        primaryText: `${query} Tech Park`, 
-        secondaryText: "Outer Ring Road, Bangalore", 
-        fullAddress: `Embassy ${query} Business Park, Marathahalli, Bangalore 560103`,
-        lat: 12.9376, lng: 77.6914 
       }
     ];
   }
 };
 
-/**
- * Simulates reverse geocoding for "Current Location" feature.
- */
 export const reverseGeocode = async (lat: number, lng: number): Promise<Location> => {
-  // In production: Call Google Reverse Geocoding API
-  // Here we simulate a response based on the coordinates
+  if (!getApiKey()) {
+    return { address: "Current Location", secondaryAddress: "Near detected GPS", lat, lng };
+  }
+
   const prompt = `Reverse geocode these coordinates in India: Lat ${lat}, Lng ${lng}.
   Provide a human-readable address. Return as JSON with keys: address, secondaryAddress.`;
 

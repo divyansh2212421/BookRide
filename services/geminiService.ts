@@ -2,9 +2,28 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { RideEstimate, AIInsight, ChatMessage } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Safety check for environment variables in browser environments
+const getApiKey = () => {
+  try {
+    return process.env.API_KEY || "";
+  } catch (e) {
+    console.warn("process.env.API_KEY not found. Ensure it is set in your deployment environment.");
+    return "";
+  }
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 export const getSmartInsights = async (estimates: RideEstimate[]): Promise<AIInsight> => {
+  if (!getApiKey()) {
+    return {
+      summary: "AI Insights currently unavailable.",
+      recommendation: "Check prices manually.",
+      savingTip: "Look for the 'Lowest Fare' tag.",
+      surgePrediction: "Check back later for trends."
+    };
+  }
+
   const prompt = `Analyze these ride options for a commuter in India. 
   Data: ${JSON.stringify(estimates.map(e => ({ provider: e.provider, type: e.category, name: e.name, price: e.price, eta: e.eta })))}
   
@@ -32,6 +51,7 @@ export const getSmartInsights = async (estimates: RideEstimate[]): Promise<AIIns
 
     return JSON.parse(response.text.trim()) as AIInsight;
   } catch (error) {
+    console.error("Gemini Insights Error:", error);
     return {
       summary: "Prices are fluctuating.",
       recommendation: "Uber Mini seems optimal right now.",
@@ -42,6 +62,8 @@ export const getSmartInsights = async (estimates: RideEstimate[]): Promise<AIIns
 };
 
 export const chatWithAssistant = async (history: ChatMessage[], currentContext: RideEstimate[]): Promise<string> => {
+  if (!getApiKey()) return "I'm currently offline (API Key missing). Please check your configuration.";
+
   const contextText = currentContext.length > 0 
     ? `Current Ride Options: ${JSON.stringify(currentContext.map(c => ({ p: c.provider, n: c.name, pr: c.price, t: c.eta })))}` 
     : "No rides searched yet.";
@@ -51,7 +73,6 @@ export const chatWithAssistant = async (history: ChatMessage[], currentContext: 
   Focus on price savings and time efficiency. Mention Uber, Ola, and Rapido specifically.`;
 
   try {
-    // Correct usage of generateContent with wrapped parts within a Content object
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -65,6 +86,7 @@ export const chatWithAssistant = async (history: ChatMessage[], currentContext: 
 
     return response.text.trim();
   } catch (error) {
+    console.error("Chat AI Error:", error);
     return "I'm having trouble connecting right now, but generally, Rapido is cheaper for short solo trips!";
   }
 };
