@@ -2,15 +2,10 @@
 import { Booking, RideEstimate, RideStatus, PaymentStatus, Location } from '../types';
 import { processPayment } from './paymentService';
 
-/**
- * ProviderAdapter simulates the interface to different Ride Providers.
- * In production, these methods would hit official REST/gRPC endpoints.
- */
 class ProviderAdapter {
   static async requestRide(ride: RideEstimate, pickup: Location, drop: Location): Promise<Partial<Booking>> {
     await new Promise(resolve => setTimeout(resolve, 1500));
     
-    // Simulate real-world response data from provider
     return {
       otp: Math.floor(1000 + Math.random() * 9000).toString(),
       driverName: ['Rajesh', 'Suresh', 'Amit', 'Vikram'][Math.floor(Math.random() * 4)],
@@ -25,13 +20,11 @@ export const createBooking = async (
   pickup: Location, 
   drop: Location
 ): Promise<Booking> => {
-  // 1. Authorize Payment
   const payment = await processPayment(ride.price);
   if (!payment.success) {
     throw new Error('Payment failed. Please check your card or wallet.');
   }
 
-  // 2. Request Ride from Provider
   try {
     const providerDetails = await ProviderAdapter.requestRide(ride, pickup, drop);
     
@@ -46,20 +39,20 @@ export const createBooking = async (
       drop,
       paymentStatus: PaymentStatus.CAPTURED,
       timestamp: Date.now(),
-      ...providerDetails
+      ...providerDetails,
+      currentLocation: {
+        lat: pickup.lat - 0.01, // Start slightly away
+        lng: pickup.lng - 0.01,
+        bearing: 0
+      }
     };
 
     return booking;
   } catch (error) {
-    // 3. Rollback payment if booking fails
     throw new Error('Could not book with provider. Payment has been refunded.');
   }
 };
 
-/**
- * Simulates a ride status lifecycle for demonstration purposes.
- * In production, this would be a WebSocket or Polling service.
- */
 export const subscribeToRideStatus = (
   booking: Booking, 
   onStatusUpdate: (status: RideStatus) => void
@@ -67,12 +60,62 @@ export const subscribeToRideStatus = (
   const steps = [
     { status: RideStatus.ARRIVING, delay: 5000 },
     { status: RideStatus.ON_TRIP, delay: 15000 },
-    { status: RideStatus.COMPLETED, delay: 30000 },
+    { status: RideStatus.COMPLETED, delay: 45000 },
   ];
 
-  steps.forEach((step, index) => {
-    setTimeout(() => {
-      onStatusUpdate(step.status);
-    }, step.delay);
-  });
+  const timeouts = steps.map(step => 
+    setTimeout(() => onStatusUpdate(step.status), step.delay)
+  );
+
+  return () => timeouts.forEach(t => clearTimeout(t));
+};
+
+/**
+ * Simulates real-time tracking coordinates using interpolation.
+ */
+export const subscribeToLiveTracking = (
+  booking: Booking,
+  onLocationUpdate: (location: { lat: number; lng: number; bearing: number }) => void
+) => {
+  let progress = 0;
+  const totalSteps = 100;
+  const intervalTime = 1000; // Update every second
+
+  const interval = setInterval(() => {
+    progress += 1;
+    if (progress > totalSteps) {
+      clearInterval(interval);
+      return;
+    }
+
+    // Simple linear interpolation between start (simulated slightly away) and drop
+    // Step 0-30: Arriving at pickup
+    // Step 30-100: On trip to drop
+    const t = progress / totalSteps;
+    let targetLat, targetLng, sourceLat, sourceLng, segmentT;
+
+    if (t <= 0.3) {
+      sourceLat = booking.pickup.lat - 0.01;
+      sourceLng = booking.pickup.lng - 0.01;
+      targetLat = booking.pickup.lat;
+      targetLng = booking.pickup.lng;
+      segmentT = t / 0.3;
+    } else {
+      sourceLat = booking.pickup.lat;
+      sourceLng = booking.pickup.lng;
+      targetLat = booking.drop.lat;
+      targetLng = booking.drop.lng;
+      segmentT = (t - 0.3) / 0.7;
+    }
+
+    const lat = sourceLat + (targetLat - sourceLat) * segmentT;
+    const lng = sourceLng + (targetLng - sourceLng) * segmentT;
+    
+    // Calculate bearing (crude)
+    const bearing = Math.atan2(targetLng - sourceLng, targetLat - sourceLat) * (180 / Math.PI);
+
+    onLocationUpdate({ lat, lng, bearing });
+  }, intervalTime);
+
+  return () => clearInterval(interval);
 };

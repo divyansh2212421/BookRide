@@ -81,6 +81,11 @@ export interface Booking {
   vehicleNumber?: string;
   paymentStatus: PaymentStatus;
   timestamp: number;
+  currentLocation?: {
+    lat: number;
+    lng: number;
+    bearing: number;
+  };
 }
 
 export interface RideHistoryItem {

@@ -51,12 +51,15 @@ export const chatWithAssistant = async (history: ChatMessage[], currentContext: 
   Focus on price savings and time efficiency. Mention Uber, Ola, and Rapido specifically.`;
 
   try {
+    // Correct usage of generateContent with wrapped parts within a Content object
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: [
-        { text: contextText },
-        ...history.map(m => ({ text: `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}` }))
-      ],
+      contents: {
+        parts: [
+          { text: contextText },
+          ...history.map(m => ({ text: `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.text}` }))
+        ]
+      },
       config: { systemInstruction }
     });
 
