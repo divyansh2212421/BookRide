@@ -1,26 +1,28 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { RideEstimate, AIInsight, ChatMessage } from "../types";
 
-// Safety check for environment variables in browser environments
-const getApiKey = () => {
-  try {
-    return process.env.API_KEY || "";
-  } catch (e) {
-    console.warn("process.env.API_KEY not found. Ensure it is set in your deployment environment.");
-    return "";
+/**
+ * PRODUCTION SAFE INITIALIZATION
+ * We use a factory pattern to ensure the SDK is only initialized when needed
+ * and handles missing API keys gracefully without crashing the whole application.
+ */
+const getAIClient = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    return null;
   }
+  return new GoogleGenAI({ apiKey });
 };
 
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
-
 export const getSmartInsights = async (estimates: RideEstimate[]): Promise<AIInsight> => {
-  if (!getApiKey()) {
+  const ai = getAIClient();
+  
+  if (!ai || estimates.length === 0) {
     return {
-      summary: "AI Insights currently unavailable.",
-      recommendation: "Check prices manually.",
-      savingTip: "Look for the 'Lowest Fare' tag.",
-      surgePrediction: "Check back later for trends."
+      summary: "Comparison complete.",
+      recommendation: estimates.length > 0 ? `The cheapest option is ${estimates.sort((a, b) => a.price - b.price)[0].provider}.` : "Search for rides to see insights.",
+      savingTip: "Check different ride categories for better rates.",
+      surgePrediction: "Check individual providers for real-time surge indicators."
     };
   }
 
@@ -28,7 +30,7 @@ export const getSmartInsights = async (estimates: RideEstimate[]): Promise<AIIns
   Data: ${JSON.stringify(estimates.map(e => ({ provider: e.provider, type: e.category, name: e.name, price: e.price, eta: e.eta })))}
   
   Identify the best overall value and cheapest options. Predict surge likelihood based on current time. 
-  Keep response strictly in JSON.`;
+  Keep response strictly in JSON format matching the requested schema.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -49,20 +51,23 @@ export const getSmartInsights = async (estimates: RideEstimate[]): Promise<AIIns
       }
     });
 
-    return JSON.parse(response.text.trim()) as AIInsight;
+    const text = response.text;
+    if (!text) throw new Error("Empty response from AI");
+    return JSON.parse(text.trim()) as AIInsight;
   } catch (error) {
-    console.error("Gemini Insights Error:", error);
+    console.warn("Gemini Insights failed to load. Falling back to static logic.", error);
     return {
-      summary: "Prices are fluctuating.",
-      recommendation: "Uber Mini seems optimal right now.",
-      savingTip: "Switch to Bike to save up to 40%.",
-      surgePrediction: "Moderate surge expected in the next 30 mins."
+      summary: "Live prices available below.",
+      recommendation: "Select the option that best fits your schedule.",
+      savingTip: "Uber and Ola prices often vary by small margins.",
+      surgePrediction: "High demand observed in the current area."
     };
   }
 };
 
 export const chatWithAssistant = async (history: ChatMessage[], currentContext: RideEstimate[]): Promise<string> => {
-  if (!getApiKey()) return "I'm currently offline (API Key missing). Please check your configuration.";
+  const ai = getAIClient();
+  if (!ai) return "I'm currently in basic mode. I can help you compare the prices listed on the screen. Rapido is usually best for solo trips, while Uber/Ola offer more comfort.";
 
   const contextText = currentContext.length > 0 
     ? `Current Ride Options: ${JSON.stringify(currentContext.map(c => ({ p: c.provider, n: c.name, pr: c.price, t: c.eta })))}` 
@@ -70,7 +75,8 @@ export const chatWithAssistant = async (history: ChatMessage[], currentContext: 
 
   const systemInstruction = `You are RideCompare AI, a helpful Indian ride assistant. 
   Use the current ride options to help users decide. Be helpful, professional, and slightly witty.
-  Focus on price savings and time efficiency. Mention Uber, Ola, and Rapido specifically.`;
+  Focus on price savings and time efficiency. Mention Uber, Ola, and Rapido specifically.
+  If no rides are searched yet, invite the user to enter their pickup and destination.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -84,9 +90,9 @@ export const chatWithAssistant = async (history: ChatMessage[], currentContext: 
       config: { systemInstruction }
     });
 
-    return response.text.trim();
+    return response.text || "I'm not sure how to answer that, but I recommend checking the price list above!";
   } catch (error) {
     console.error("Chat AI Error:", error);
-    return "I'm having trouble connecting right now, but generally, Rapido is cheaper for short solo trips!";
+    return "I'm having a bit of a moment. Try checking the cheapest ride highlighted in green!";
   }
 };

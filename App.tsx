@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import SearchPanel from './components/SearchPanel';
 import RideCard from './components/RideCard';
@@ -30,9 +29,13 @@ const App: React.FC = () => {
   const [redirectRide, setRedirectRide] = useState<RideEstimate | null>(null);
 
   useEffect(() => {
-    const { user: savedUser } = getUserSession();
-    if (savedUser) setUser(savedUser);
-    setHistory(getRideHistory());
+    try {
+      const { user: savedUser } = getUserSession();
+      if (savedUser) setUser(savedUser);
+      setHistory(getRideHistory());
+    } catch (e) {
+      console.error("Failed to load local session", e);
+    }
   }, []);
 
   const handleSearch = useCallback(async (pickup: Location, drop: Location) => {
@@ -41,8 +44,13 @@ const App: React.FC = () => {
     setInsights(null);
     setPickupData(pickup);
     setDropData(drop);
+    
     try {
       const results = await fetchRideEstimates(pickup, drop);
+      if (!results || results.length === 0) {
+        throw new Error("No rides found for this route.");
+      }
+      
       setEstimates(results);
       
       const historyItem: RideHistoryItem = {
@@ -51,12 +59,15 @@ const App: React.FC = () => {
         pickup,
         drop
       };
+      
       saveRideToHistory(historyItem);
       setHistory(getRideHistory());
 
-      getSmartInsights(results).then(setInsights).catch(console.error);
-    } catch (err) {
-      setError("Failed to fetch ride estimates. Market might be too busy.");
+      getSmartInsights(results).then(setInsights).catch(e => {
+         console.warn("Insights failed, but results are shown.", e);
+      });
+    } catch (err: any) {
+      setError(err.message || "Failed to fetch ride estimates. Market might be too busy.");
     } finally {
       setLoading(false);
     }
@@ -100,10 +111,10 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen pb-20 bg-[#F9FAFB]">
+    <div className="min-h-screen pb-20 bg-[#F9FAFB] flex flex-col items-center">
       {/* Header */}
-      <header className="bg-gray-900 pt-10 pb-16 px-6 text-white relative overflow-hidden">
-        <div className="relative z-10 flex items-center justify-between">
+      <header className="bg-gray-900 pt-10 pb-16 px-6 text-white relative overflow-hidden w-full">
+        <div className="relative z-10 flex items-center justify-between max-w-4xl mx-auto">
           <div className="flex items-center gap-3">
              <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center font-black shadow-xl shadow-indigo-500/20">R</div>
              <div>
@@ -116,6 +127,7 @@ const App: React.FC = () => {
             <button 
               onClick={() => setShowHistory(true)}
               className="p-3 bg-white/5 rounded-2xl hover:bg-white/10 transition-colors border border-white/5"
+              aria-label="View History"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
             </button>
@@ -143,9 +155,11 @@ const App: React.FC = () => {
       </header>
 
       {/* Main UI */}
-      <SearchPanel onSearch={handleSearch} isLoading={loading} />
+      <div className="w-full max-w-4xl px-4 -mt-10">
+        <SearchPanel onSearch={handleSearch} isLoading={loading} />
+      </div>
 
-      <main className="px-5 mt-12 max-w-3xl mx-auto">
+      <main className="px-5 mt-12 w-full max-w-3xl">
         {error && (
           <div className="bg-red-50 text-red-600 p-5 rounded-[32px] border border-red-100 mb-8 flex items-center gap-4 animate-in fade-in slide-in-from-top-2">
             <div className="w-10 h-10 bg-red-100 rounded-2xl flex items-center justify-center shrink-0">
@@ -173,10 +187,12 @@ const App: React.FC = () => {
                          <div className="w-1 h-1 bg-green-500 rounded-full"></div>
                          Saving Tip: {insights.savingTip}
                       </div>
-                      <div className="px-3 py-1.5 bg-amber-50 text-[10px] font-black text-amber-700 rounded-xl border border-amber-100/50 uppercase tracking-wider flex items-center gap-1.5">
-                         <div className="w-1 h-1 bg-amber-500 rounded-full"></div>
-                         Surge Trend: {insights.surgePrediction}
-                      </div>
+                      {insights.surgePrediction && (
+                        <div className="px-3 py-1.5 bg-amber-50 text-[10px] font-black text-amber-700 rounded-xl border border-amber-100/50 uppercase tracking-wider flex items-center gap-1.5">
+                           <div className="w-1 h-1 bg-amber-500 rounded-full"></div>
+                           Surge Trend: {insights.surgePrediction}
+                        </div>
+                      )}
                    </div>
                 </div>
              </div>
@@ -230,8 +246,21 @@ const App: React.FC = () => {
 
       {/* Floating Elements */}
       <ChatAssistant currentEstimates={estimates} />
-      {showAuth && <AuthModal onSuccess={(u) => { setUser(u); setShowAuth(false); }} onClose={() => setShowAuth(false)} />}
-      {showHistory && <HistoryPanel history={history} onSelect={(p, d) => { handleSearch(p, d); setShowHistory(false); }} onClose={() => setShowHistory(false)} />}
+      
+      {showAuth && (
+        <AuthModal 
+          onSuccess={(u) => { setUser(u); setShowAuth(false); }} 
+          onClose={() => setShowAuth(false)} 
+        />
+      )}
+      
+      {showHistory && (
+        <HistoryPanel 
+          history={history} 
+          onSelect={(p, d) => { handleSearch(p, d); setShowHistory(false); }} 
+          onClose={() => setShowHistory(false)} 
+        />
+      )}
       
       {/* Redirection Modal */}
       {redirectRide && pickupData && dropData && (
@@ -243,7 +272,7 @@ const App: React.FC = () => {
         />
       )}
 
-      <footer className="mt-20 py-12 px-6 border-t border-gray-100 bg-white">
+      <footer className="mt-auto py-12 px-6 border-t border-gray-100 bg-white w-full">
         <div className="max-w-3xl mx-auto text-center space-y-4">
            <div className="flex items-center justify-center gap-2 mb-4">
               <div className="w-6 h-6 bg-indigo-600 rounded-lg flex items-center justify-center text-[10px] font-black text-white">R</div>
@@ -251,7 +280,7 @@ const App: React.FC = () => {
            </div>
            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-loose">
              © 2025 RideWise Mobility Engine. Pricing data is estimated based on public tariffs. 
-             Final fare may vary on the provider's platform. We do not provide rides directly.
+             Final fare may vary on the provider's platform.
            </p>
            <div className="flex items-center justify-center gap-6 pt-4">
               <a href="#" className="text-[9px] font-black text-gray-400 hover:text-indigo-600 transition-colors uppercase tracking-widest">Privacy</a>
