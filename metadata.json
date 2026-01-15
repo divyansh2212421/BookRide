@@ -1,0 +1,7 @@
+{
+  "name": "RideWise - Indian Ride Comparison Engine",
+  "description": "A 'Skyscanner for cabs' comparing real-time fare estimates from Uber, Ola, and Rapido to help users find the cheapest and fastest local rides.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
