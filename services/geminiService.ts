@@ -1,14 +1,15 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { RideEstimate, AIInsight, ChatMessage } from "../types";
 
 /**
  * PRODUCTION SAFE INITIALIZATION
- * We use a factory pattern to ensure the SDK is only initialized when needed
- * and handles missing API keys gracefully without crashing the whole application.
+ * We use a factory pattern to ensure the SDK is only initialized when needed.
  */
 const getAIClient = () => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) {
+  if (!apiKey || apiKey === "undefined") {
+    console.warn("Gemini API Key is missing. AI features will be limited.");
     return null;
   }
   return new GoogleGenAI({ apiKey });
@@ -22,7 +23,7 @@ export const getSmartInsights = async (estimates: RideEstimate[]): Promise<AIIns
       summary: "Comparison complete.",
       recommendation: estimates.length > 0 ? `The cheapest option is ${estimates.sort((a, b) => a.price - b.price)[0].provider}.` : "Search for rides to see insights.",
       savingTip: "Check different ride categories for better rates.",
-      surgePrediction: "Check individual providers for real-time surge indicators."
+      surgePrediction: "No trend data available."
     };
   }
 
@@ -55,19 +56,19 @@ export const getSmartInsights = async (estimates: RideEstimate[]): Promise<AIIns
     if (!text) throw new Error("Empty response from AI");
     return JSON.parse(text.trim()) as AIInsight;
   } catch (error) {
-    console.warn("Gemini Insights failed to load. Falling back to static logic.", error);
+    console.error("Gemini Insights Error:", error);
     return {
       summary: "Live prices available below.",
       recommendation: "Select the option that best fits your schedule.",
-      savingTip: "Uber and Ola prices often vary by small margins.",
-      surgePrediction: "High demand observed in the current area."
+      savingTip: "Prices fluctuate based on demand.",
+      surgePrediction: "Check individual providers for surge flags."
     };
   }
 };
 
 export const chatWithAssistant = async (history: ChatMessage[], currentContext: RideEstimate[]): Promise<string> => {
   const ai = getAIClient();
-  if (!ai) return "I'm currently in basic mode. I can help you compare the prices listed on the screen. Rapido is usually best for solo trips, while Uber/Ola offer more comfort.";
+  if (!ai) return "I'm currently in basic mode. I can help you compare the prices listed on the screen. Rapido is usually best for solo trips!";
 
   const contextText = currentContext.length > 0 
     ? `Current Ride Options: ${JSON.stringify(currentContext.map(c => ({ p: c.provider, n: c.name, pr: c.price, t: c.eta })))}` 
@@ -75,8 +76,7 @@ export const chatWithAssistant = async (history: ChatMessage[], currentContext: 
 
   const systemInstruction = `You are RideCompare AI, a helpful Indian ride assistant. 
   Use the current ride options to help users decide. Be helpful, professional, and slightly witty.
-  Focus on price savings and time efficiency. Mention Uber, Ola, and Rapido specifically.
-  If no rides are searched yet, invite the user to enter their pickup and destination.`;
+  Focus on price savings and time efficiency. Mention Uber, Ola, and Rapido specifically.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -90,9 +90,9 @@ export const chatWithAssistant = async (history: ChatMessage[], currentContext: 
       config: { systemInstruction }
     });
 
-    return response.text || "I'm not sure how to answer that, but I recommend checking the price list above!";
+    return response.text || "I recommend checking the price list above!";
   } catch (error) {
     console.error("Chat AI Error:", error);
-    return "I'm having a bit of a moment. Try checking the cheapest ride highlighted in green!";
+    return "I'm having a bit of trouble connecting to my brain. Try selecting the cheapest ride highlighted in green!";
   }
 };
